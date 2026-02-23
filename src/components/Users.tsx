@@ -64,6 +64,10 @@ export default function Users() {
 
   const handleDelete = (id: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (id === 0) { // Assuming admin user has id 0
+      alert("Admin user cannot be deleted.");
+      return;
+    }
     if(window.confirm('Are you sure you want to delete this user?')) {
       setUsers(prevUsers => prevUsers.filter(u => u.id !== id));
     }
@@ -165,7 +169,13 @@ export default function Users() {
                     </button>
                   )}
                   <button onClick={() => handleOpenModal(user)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors mr-2"><Edit className="w-4 h-4" /></button>
-                  <button onClick={(e) => handleDelete(user.id, e)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors"><Trash className="w-4 h-4" /></button>
+                  <button 
+                    onClick={(e) => handleDelete(user.id, e)} 
+                    className="p-1 text-slate-400 hover:text-rose-600 transition-colors disabled:text-slate-300 disabled:cursor-not-allowed"
+                    disabled={user.id === 0}
+                  >
+                    <Trash className="w-4 h-4" />
+                  </button>
                 </td>
               </tr>
             ))}
