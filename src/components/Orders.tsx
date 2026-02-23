@@ -18,7 +18,7 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
       setFormData(order);
     } else {
       setEditingOrder(null);
-      setFormData({ id: `PO-${Date.now().toString().slice(-6)}`, supplier: '', companyGroup: '', companyPhone: '', date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), amount: '', paid: '', due: 0, status: 'Due', items: [] });
+      setFormData({ id: `PO-2023-00${orders.length + 1}`, supplier: '', companyGroup: '', companyPhone: '', date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), amount: '', paid: '', due: 0, status: 'Due', items: [] });
     }
     setIsModalOpen(true);
   };
@@ -131,7 +131,8 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
     setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if(window.confirm('Are you sure you want to delete this order?')) {
       setOrders(orders.filter(o => o.id !== id));
     }
@@ -211,8 +212,8 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredOrders.map((order, index) => (
-              <tr key={`${order.id}-${index}`} className="hover:bg-slate-50 transition-colors">
+            {filteredOrders.map((order) => (
+              <tr key={order.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4 font-medium text-indigo-600 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-slate-400" />
                   {order.id}
@@ -236,7 +237,7 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
                     <button onClick={() => { setPaymentModal(order); setNewPayment(''); }} className="p-1 text-slate-400 hover:text-emerald-600 transition-colors" title="Update Payment"><CreditCard className="w-4 h-4" /></button>
                   )}
                   <button onClick={() => handleOpenModal(order)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors" title="Edit"><Edit className="w-4 h-4" /></button>
-                  <button onClick={() => handleDelete(order.id)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors" title="Delete"><Trash className="w-4 h-4" /></button>
+                  <button onClick={(e) => handleDelete(order.id, e)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors" title="Delete"><Trash className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}

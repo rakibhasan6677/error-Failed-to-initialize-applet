@@ -151,7 +151,7 @@ export default function Sales({
     const finalPaid = typeof paidAmount === 'number' ? paidAmount : 0;
     
     const newSale = {
-      id: `INV-${Date.now().toString().slice(-6)}`,
+      id: `INV-00${sales.length + 1}`,
       customer: finalCustomer,
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       amount: totalAmount,
@@ -173,7 +173,8 @@ export default function Sales({
     p.sku.toLowerCase().includes(productSearch.toLowerCase())
   );
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if(window.confirm('Are you sure you want to delete this sale record?')) {
       setSales(sales.filter(s => s.id !== id));
     }
@@ -266,8 +267,8 @@ export default function Sales({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredSales.map((sale, index) => (
-              <tr key={`${sale.id}-${index}`} className="hover:bg-slate-50 transition-colors">
+            {filteredSales.map((sale) => (
+              <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4 font-medium text-indigo-600 flex items-center gap-2">
                   <ShoppingBag className="w-4 h-4 text-slate-400" />
                   {sale.id}
@@ -290,7 +291,7 @@ export default function Sales({
                   {sale.due > 0 && (
                     <button onClick={() => { setPaymentModal(sale); setNewPayment(''); setPaymentMethod('Cash'); }} className="p-1 text-slate-400 hover:text-emerald-600 transition-colors" title="Update Payment"><CreditCard className="w-4 h-4" /></button>
                   )}
-                  <button onClick={() => handleDelete(sale.id)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors" title="Delete"><Trash className="w-4 h-4" /></button>
+                  <button onClick={(e) => handleDelete(sale.id, e)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors" title="Delete"><Trash className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
@@ -308,9 +309,9 @@ export default function Sales({
               </button>
             </div>
             
-            <div className="flex flex-col lg:flex-row flex-1 overflow-y-auto lg:overflow-hidden">
+            <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
               {/* Left Side - Product Search & Cart */}
-              <div className="flex-1 flex flex-col border-r border-slate-100 overflow-hidden min-h-[300px] shrink-0 lg:shrink">
+              <div className="flex-1 flex flex-col border-r border-slate-100 overflow-hidden min-h-[300px]">
                 <div className="p-4 border-b border-slate-100 shrink-0">
                   <div className="relative">
                     <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -495,8 +496,8 @@ export default function Sales({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {viewInvoice.cartItems && viewInvoice.cartItems.map((item: any, index: number) => (
-                      <tr key={`${item.id || item.sku}-${index}`}>
+                    {viewInvoice.cartItems && viewInvoice.cartItems.map((item: any) => (
+                      <tr key={item.id || item.sku}>
                         <td className="px-4 py-3 text-slate-900">
                           <p className="font-medium">{item.name}</p>
                           <p className="text-xs text-slate-500">{item.quantity} x ৳ {item.price.toLocaleString()}</p>

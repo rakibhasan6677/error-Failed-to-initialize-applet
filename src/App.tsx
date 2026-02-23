@@ -22,8 +22,7 @@ import {
   X,
   Calendar,
   Clock,
-  Truck,
-  Trash
+  Truck
 } from 'lucide-react';
 import {
   AreaChart,
@@ -151,26 +150,9 @@ export default function App() {
   const [pendingPaymentUpdate, setPendingPaymentUpdate] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [enabledGateways, setEnabledGateways] = useState<string[]>(['Cash']);
 
   const notificationsRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const savedSettings = localStorage.getItem('ims_settings');
-    if (savedSettings) {
-      try {
-        const settings = JSON.parse(savedSettings);
-        const gateways = ['Cash'];
-        if (settings.bkashEnabled) gateways.push('bKash');
-        if (settings.nagadEnabled) gateways.push('Nagad');
-        if (settings.rocketEnabled) gateways.push('Rocket');
-        setEnabledGateways(gateways);
-      } catch (e) {
-        console.error("Failed to parse settings", e);
-      }
-    }
-  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -242,21 +224,11 @@ export default function App() {
     setIsAddProductOpen(false);
   };
 
-  const [deleteConfirmation, setDeleteConfirmation] = useState<number | string | null>(null);
-
-  const handleDeleteProductClick = (id: number | string) => {
-    setDeleteConfirmation(id);
-  };
-
-  const confirmDeleteProduct = () => {
-    if (deleteConfirmation !== null) {
-      setProducts(products.filter(p => p.id != deleteConfirmation));
-      setDeleteConfirmation(null);
+  const handleDeleteProduct = (id: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if(window.confirm('Are you sure you want to delete this product?')) {
+      setProducts(products.filter(p => p.id !== id));
     }
-  };
-
-  const cancelDeleteProduct = () => {
-    setDeleteConfirmation(null);
   };
 
   const filteredProducts = products.filter(product => 
@@ -278,18 +250,9 @@ export default function App() {
   const renderDashboard = () => {
     const gatewayBalances = sales.reduce((acc, sale) => {
       const method = sale.paymentMethod || 'Cash';
-      if (method !== 'Cash') {
-        acc[method] = (acc[method] || 0) + sale.paid;
-      }
+      acc[method] = (acc[method] || 0) + sale.paid;
       return acc;
     }, {} as Record<string, number>);
-
-    // Add enabled gateways with 0 balance if not present
-    enabledGateways.forEach(method => {
-      if (method !== 'Cash' && gatewayBalances[method] === undefined) {
-        gatewayBalances[method] = 0;
-      }
-    });
 
     return (
       <div className="space-y-6">
@@ -323,6 +286,7 @@ export default function App() {
                     ${method === 'bKash' ? 'bg-pink-50 text-pink-600' : 
                       method === 'Nagad' ? 'bg-orange-50 text-orange-600' : 
                       method === 'Rocket' ? 'bg-purple-50 text-purple-600' : 
+                      method === 'Cash' ? 'bg-emerald-50 text-emerald-600' :
                       'bg-indigo-50 text-indigo-600'}`}>
                     {method}
                   </div>
@@ -543,7 +507,7 @@ export default function App() {
                 </td>
                 <td className="px-6 py-4 text-right">
                   <button onClick={() => handleOpenProductModal(product)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors mr-2">Edit</button>
-                  <button onClick={() => handleDeleteProductClick(product.id)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors">Delete</button>
+                  <button onClick={(e) => handleDeleteProduct(product.id, e)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors">Delete</button>
                 </td>
               </tr>
             ))}
@@ -843,36 +807,6 @@ export default function App() {
               >
                 Save Product
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Delete Confirmation Modal */}
-      {deleteConfirmation !== null && (
-        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
-            <div className="p-6 text-center">
-              <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
-                <Trash className="w-6 h-6 text-rose-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete Product?</h3>
-              <p className="text-sm text-slate-500 mb-6">
-                Are you sure you want to delete this product? This action cannot be undone.
-              </p>
-              <div className="flex gap-3 justify-center">
-                <button 
-                  onClick={cancelDeleteProduct}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={confirmDeleteProduct}
-                  className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
             </div>
           </div>
         </div>

@@ -24,11 +24,12 @@ export default function Users() {
     const saved = localStorage.getItem('ims_users');
     return saved ? JSON.parse(saved) : initialUsers;
   });
-  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     localStorage.setItem('ims_users', JSON.stringify(users));
   }, [users]);
+
+  const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Omit<User, 'id'>>({ name: '', email: '', role: 'Staff', location: 'Main Warehouse', status: 'Active', username: '' });
@@ -53,21 +54,11 @@ export default function Users() {
     setIsModalOpen(false);
   };
 
-  const [deleteConfirmation, setDeleteConfirmation] = useState<number | null>(null);
-
-  const handleDeleteClick = (id: number) => {
-    setDeleteConfirmation(id);
-  };
-
-  const confirmDelete = () => {
-    if (deleteConfirmation !== null) {
-      setUsers(users.filter(u => u.id !== deleteConfirmation));
-      setDeleteConfirmation(null);
+  const handleDelete = (id: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if(window.confirm('Are you sure you want to delete this user?')) {
+      setUsers(users.filter(u => u.id !== id));
     }
-  };
-
-  const cancelDelete = () => {
-    setDeleteConfirmation(null);
   };
 
   const handleUnblock = (username: string) => {
@@ -126,8 +117,8 @@ export default function Users() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredUsers.map((user, index) => (
-              <tr key={`${user.id}-${index}`} className="hover:bg-slate-50 transition-colors">
+            {filteredUsers.map((user) => (
+              <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
@@ -166,7 +157,7 @@ export default function Users() {
                     </button>
                   )}
                   <button onClick={() => handleOpenModal(user)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors mr-2"><Edit className="w-4 h-4" /></button>
-                  <button onClick={() => handleDeleteClick(user.id)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors"><Trash className="w-4 h-4" /></button>
+                  <button onClick={(e) => handleDelete(user.id, e)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors"><Trash className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
@@ -226,35 +217,6 @@ export default function Users() {
             <div className="p-4 border-t border-slate-100 flex justify-end gap-3">
               <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">Cancel</button>
               <button onClick={handleSave} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors">Save</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {deleteConfirmation !== null && (
-        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
-            <div className="p-6 text-center">
-              <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
-                <Trash className="w-6 h-6 text-rose-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete User?</h3>
-              <p className="text-sm text-slate-500 mb-6">
-                Are you sure you want to delete this user? This action cannot be undone.
-              </p>
-              <div className="flex gap-3 justify-center">
-                <button 
-                  onClick={cancelDelete}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={confirmDelete}
-                  className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
             </div>
           </div>
         </div>
