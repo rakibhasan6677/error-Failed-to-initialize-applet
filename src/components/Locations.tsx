@@ -1,22 +1,18 @@
+import { supabase } from '../supabase';
 import React, { useState, useEffect } from 'react';
 import { MapPin, Search, Plus, Edit2, Trash2, X } from 'lucide-react';
 
-const initialLocations = [
-  { id: 1, name: 'Main Warehouse', type: 'Warehouse', address: '123 Industrial Park, Dhaka', capacity: '85%', status: 'Active' },
-  { id: 2, name: 'Showroom 1', type: 'Showroom', address: 'Gulshan Avenue, Dhaka', capacity: '60%', status: 'Active' },
-  { id: 3, name: 'Showroom 2', type: 'Showroom', address: 'Dhanmondi 27, Dhaka', capacity: '45%', status: 'Active' },
-];
+
 
 export default function Locations() {
-  const [locations, setLocations] = useState(() => {
-    const saved = localStorage.getItem('ims_locations');
-    return saved ? JSON.parse(saved) : initialLocations;
-  });
+  const [locations, setLocations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    localStorage.setItem('ims_locations', JSON.stringify(locations));
-  }, [locations]);
+    fetchLocations();
+  }, []);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<any>(null);
   const [formData, setFormData] = useState({ name: '', type: 'Warehouse', address: '', capacity: '0%', status: 'Active' });
@@ -32,13 +28,38 @@ export default function Locations() {
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
-    if (editingLocation) {
-      setLocations(locations.map(loc => loc.id === editingLocation.id ? { ...formData, id: loc.id } : loc));
+  const fetchLocations = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('locations').select('*');
+    if (error) {
+      setError('Failed to fetch locations');
+      console.error(error);
     } else {
-      setLocations([...locations, { ...formData, id: Date.now() }]);
+      setLocations(data || []);
     }
-    setIsModalOpen(false);
+    setLoading(false);
+  };
+
+  const handleSave = async () => {
+    if (editingLocation) {
+      const { error } = await supabase.from('locations').update(formData).eq('id', editingLocation.id);
+      if (error) {
+        setError('Failed to update location');
+        console.error(error);
+      } else {
+        fetchLocations();
+        setIsModalOpen(false);
+      }
+    } else {
+      const { error } = await supabase.from('locations').insert([formData]);
+      if (error) {
+        setError('Failed to create location');
+        console.error(error);
+      } else {
+        fetchLocations();
+        setIsModalOpen(false);
+      }
+    }
   };
 
   const [deleteConfirmation, setDeleteConfirmation] = useState<number | null>(null);
@@ -47,10 +68,16 @@ export default function Locations() {
     setDeleteConfirmation(id);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteConfirmation !== null) {
-      setLocations(locations.filter(loc => loc.id !== deleteConfirmation));
-      setDeleteConfirmation(null);
+      const { error } = await supabase.from('locations').delete().eq('id', deleteConfirmation);
+      if (error) {
+        setError('Failed to delete location');
+        console.error(error);
+      } else {
+        fetchLocations();
+        setDeleteConfirmation(null);
+      }
     }
   };
 
@@ -62,6 +89,9 @@ export default function Locations() {
     loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     loc.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">

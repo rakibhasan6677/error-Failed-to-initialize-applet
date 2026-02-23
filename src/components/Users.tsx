@@ -1,46 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Users as UsersIcon, Search, Plus, UserPlus, Edit, Trash, X } from 'lucide-react';
+import { supabase } from '../supabase';
+import { User } from '../types';
 
-const initialUsers = [
-  { id: 0, name: 'অ্যাডমিন', email: 'admin@pos.com', role: 'Admin', location: 'All Locations', status: 'Active', username: 'admin' },
-  { id: 1, name: 'Rahim Uddin', email: 'rahim@example.com', role: 'Admin', location: 'All Locations', status: 'Active', username: 'rahim' },
-  { id: 2, name: 'Karim Hasan', email: 'karim@example.com', role: 'Manager', location: 'Main Warehouse', status: 'Active', username: 'karim' },
-  { id: 3, name: 'Salma Akter', email: 'salma@example.com', role: 'Staff', location: 'Showroom 1', status: 'Inactive', username: 'salma' },
-  { id: 4, name: 'Jamil Ahmed', email: 'jamil@example.com', role: 'Staff', location: 'Showroom 2', status: 'Active', username: 'jamil' },
-];
 
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  location: string;
-  status: string;
-  username?: string;
-}
 
 export default function Users() {
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('ims_users');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse users from localStorage", e);
-        return initialUsers;
-      }
-    }
-    return initialUsers;
-  });
-
-  useEffect(() => {
-    localStorage.setItem('ims_users', JSON.stringify(users));
-  }, [users]);
-
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<Omit<User, 'id'>>({ name: '', email: '', role: 'Staff', location: 'Main Warehouse', status: 'Active', username: '' });
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('users').select('*');
+    if (error) {
+      setError('Failed to fetch users');
+      console.error(error);
+    } else {
+      setUsers(data || []);
+    }
+    setLoading(false);
+  };
 
   const handleOpenModal = (user: User | null = null) => {
     if (user) {
@@ -53,23 +41,37 @@ export default function Users() {
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (editingUser) {
-      setUsers(prevUsers => prevUsers.map(u => u.id === editingUser.id ? { ...formData, id: u.id } : u));
+      const { error } = await supabase.from('users').update(formData).eq('id', editingUser.id);
+      if (error) {
+        setError('Failed to update user');
+        console.error(error);
+      } else {
+        fetchUsers();
+      }
     } else {
-      setUsers(prevUsers => [...prevUsers, { ...formData, id: Date.now() }]);
+      const { error } = await supabase.from('users').insert([formData]);
+      if (error) {
+        setError('Failed to add user');
+        console.error(error);
+      } else {
+        fetchUsers();
+      }
     }
     setIsModalOpen(false);
   };
 
-  const handleDelete = (id: number, e?: React.MouseEvent) => {
+  const handleDelete = async (id: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (id === 0) { // Assuming admin user has id 0
-      alert("Admin user cannot be deleted.");
-      return;
-    }
     if(window.confirm('Are you sure you want to delete this user?')) {
-      setUsers(prevUsers => prevUsers.filter(u => u.id !== id));
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      if (error) {
+        setError('Failed to delete user');
+        console.error(error);
+      } else {
+        fetchUsers();
+      }
     }
   };
 
@@ -92,6 +94,9 @@ export default function Users() {
     user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -169,13 +174,7 @@ export default function Users() {
                     </button>
                   )}
                   <button onClick={() => handleOpenModal(user)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors mr-2"><Edit className="w-4 h-4" /></button>
-                  <button 
-                    onClick={(e) => handleDelete(user.id, e)} 
-                    className="p-1 text-slate-400 hover:text-rose-600 transition-colors disabled:text-slate-300 disabled:cursor-not-allowed"
-                    disabled={user.id === 0}
-                  >
-                    <Trash className="w-4 h-4" />
-                  </button>
+                  <button onClick={(e) => handleDelete(user.id, e)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors"><Trash className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}

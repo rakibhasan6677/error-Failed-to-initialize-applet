@@ -1,19 +1,13 @@
+import { supabase } from '../supabase';
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Phone, Mail, MapPin, Building2, Trash, Edit, X } from 'lucide-react';
 
-const initialSuppliers = [
-  { id: 1, name: 'Global Textiles Ltd.', contactPerson: 'Mr. Rahim', phone: '01711000000', email: 'rahim@globaltextiles.com', address: 'Gazipur, Dhaka', category: 'Apparel', status: 'Active', totalOrders: 15 },
-  { id: 2, name: 'Denim Co.', contactPerson: 'John Doe', phone: '01811000001', email: 'contact@denimco.com', address: 'Chittagong EPZ', category: 'Apparel', status: 'Active', totalOrders: 8 },
-  { id: 3, name: 'Tech Accessories Inc.', contactPerson: 'Sarah Chen', phone: '01911000002', email: 'sales@techacc.com', address: 'Shenzhen, China', category: 'Electronics', status: 'Active', totalOrders: 12 },
-  { id: 4, name: 'Leather Goods Co.', contactPerson: 'Abul Kashem', phone: '01611000003', email: 'kashem@leathergoods.com', address: 'Hazaribagh, Dhaka', category: 'Accessories', status: 'On Hold', totalOrders: 5 },
-  { id: 5, name: 'Sports Gear Inc.', contactPerson: 'Mike Tyson', phone: '01511000004', email: 'mike@sportsgear.com', address: 'Industrial Area, Narayanganj', category: 'Footwear', status: 'Active', totalOrders: 20 },
-];
+
 
 export default function Suppliers() {
-  const [suppliers, setSuppliers] = useState(() => {
-    const saved = localStorage.getItem('ims_suppliers');
-    return saved ? JSON.parse(saved) : initialSuppliers;
-  });
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
@@ -28,8 +22,8 @@ export default function Suppliers() {
   });
 
   useEffect(() => {
-    localStorage.setItem('ims_suppliers', JSON.stringify(suppliers));
-  }, [suppliers]);
+    fetchSuppliers();
+  }, []);
 
   const handleOpenModal = (supplier?: any) => {
     if (supplier) {
@@ -63,25 +57,43 @@ export default function Suppliers() {
     setEditingSupplier(null);
   };
 
-  const handleSave = () => {
+  const fetchSuppliers = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('suppliers').select('*');
+    if (error) {
+      setError('Failed to fetch suppliers');
+      console.error(error);
+    } else {
+      setSuppliers(data || []);
+    }
+    setLoading(false);
+  };
+
+  const handleSave = async () => {
     if (!formData.name || !formData.contactPerson) {
       alert('Please fill in required fields');
       return;
     }
 
     if (editingSupplier) {
-      setSuppliers(suppliers.map((s: any) => 
-        s.id === editingSupplier.id ? { ...s, ...formData } : s
-      ));
+      const { error } = await supabase.from('suppliers').update(formData).eq('id', editingSupplier.id);
+      if (error) {
+        setError('Failed to update supplier');
+        console.error(error);
+      } else {
+        fetchSuppliers();
+        handleCloseModal();
+      }
     } else {
-      const newSupplier = {
-        id: Date.now(),
-        ...formData,
-        totalOrders: 0
-      };
-      setSuppliers([newSupplier, ...suppliers]);
+      const { error } = await supabase.from('suppliers').insert([formData]);
+      if (error) {
+        setError('Failed to create supplier');
+        console.error(error);
+      } else {
+        fetchSuppliers();
+        handleCloseModal();
+      }
     }
-    handleCloseModal();
   };
 
   const [deleteConfirmation, setDeleteConfirmation] = useState<number | null>(null);
@@ -90,10 +102,16 @@ export default function Suppliers() {
     setDeleteConfirmation(id);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteConfirmation !== null) {
-      setSuppliers(suppliers.filter((s: any) => s.id !== deleteConfirmation));
-      setDeleteConfirmation(null);
+      const { error } = await supabase.from('suppliers').delete().eq('id', deleteConfirmation);
+      if (error) {
+        setError('Failed to delete supplier');
+        console.error(error);
+      } else {
+        fetchSuppliers();
+        setDeleteConfirmation(null);
+      }
     }
   };
 
@@ -106,6 +124,9 @@ export default function Suppliers() {
     s.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="space-y-6">

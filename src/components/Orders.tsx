@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../supabase';
 import { ShoppingCart, Search, Plus, FileText, Eye, Edit, Trash, X, CreditCard, Receipt } from 'lucide-react';
 
-export default function Orders({ orders, setOrders, products, setProducts }: { orders: any[], setOrders: (orders: any[]) => void, products: any[], setProducts: (products: any[]) => void }) {
+export default function Orders() {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<any>(null);
@@ -11,6 +16,27 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
   const [viewInvoice, setViewInvoice] = useState<any>(null);
   const [paymentModal, setPaymentModal] = useState<any>(null);
   const [newPayment, setNewPayment] = useState<number | ''>('');
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    const [ordersRes, productsRes] = await Promise.all([
+      supabase.from('orders').select('*'),
+      supabase.from('products').select('*')
+    ]);
+
+    if (ordersRes.error || productsRes.error) {
+      setError('Failed to fetch data');
+      console.error(ordersRes.error || productsRes.error);
+    } else {
+      setOrders(ordersRes.data || []);
+      setProducts(productsRes.data || []);
+    }
+    setLoading(false);
+  };
 
   const handleOpenModal = (order: any = null) => {
     if (order) {
@@ -83,7 +109,7 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
     setFormData({ ...formData, items: newItems, amount: newAmount || '' });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const finalAmount = Number(formData.amount) || 0;
     const finalPaid = Number(formData.paid) || 0;
     const calculatedDue = finalAmount - finalPaid;
@@ -95,50 +121,41 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
       status: calculatedDue <= 0 ? 'Completed' : (finalPaid > 0 ? 'Partially Received' : 'Due')
     };
 
-    // Update products state
-    if (!editingOrder) {
-      const updatedProducts = [...products];
-      finalData.items.forEach(item => {
-        const existingIdx = updatedProducts.findIndex(p => p.sku === item.sku);
-        if (existingIdx >= 0) {
-          updatedProducts[existingIdx].stock += item.qty;
-          updatedProducts[existingIdx].price = item.sellingPrice;
-          updatedProducts[existingIdx].purchasePrice = item.purchasePrice;
-        } else {
-          updatedProducts.push({
-            id: Date.now() + Math.random(),
-            name: item.name,
-            sku: item.sku,
-            category: 'Uncategorized',
-            price: item.sellingPrice,
-            purchasePrice: item.purchasePrice,
-            stock: item.qty,
-            location: 'Main Warehouse',
-            status: 'In Stock',
-            supplier: formData.supplier,
-            company: formData.companyGroup
-          });
-        }
-      });
-      setProducts(updatedProducts);
-    }
-
     if (editingOrder) {
-      setOrders(orders.map(o => o.id === editingOrder.id ? finalData : o));
+      const { error } = await supabase.from('orders').update(finalData).eq('id', editingOrder.id);
+      if (error) {
+        setError('Failed to update order');
+        console.error(error);
+      } else {
+        fetchData();
+        setIsModalOpen(false);
+      }
     } else {
-      setOrders([...orders, finalData]);
+      const { error } = await supabase.from('orders').insert([finalData]);
+      if (error) {
+        setError('Failed to create order');
+        console.error(error);
+      } else {
+        fetchData();
+        setIsModalOpen(false);
+      }
     }
-    setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string, e?: React.MouseEvent) => {
+  const handleDelete = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if(window.confirm('Are you sure you want to delete this order?')) {
-      setOrders(prevOrders => prevOrders.filter(o => o.id !== id));
+      const { error } = await supabase.from('orders').delete().eq('id', id);
+      if (error) {
+        setError('Failed to delete order');
+        console.error(error);
+      } else {
+        fetchData();
+      }
     }
   };
 
-  const handleUpdatePayment = () => {
+  const handleUpdatePayment = async () => {
     if (typeof newPayment !== 'number' || newPayment <= 0) {
       alert('Please enter a valid payment amount.');
       return;
@@ -149,29 +166,32 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
       return;
     }
 
-    const updatedOrders = orders.map(o => {
-      if (o.id === paymentModal.id) {
-        const updatedPaid = o.paid + newPayment;
-        const updatedDue = o.amount - updatedPaid;
-        return {
-          ...o,
-          paid: updatedPaid,
-          due: updatedDue,
-          status: updatedDue <= 0 ? 'Completed' : 'Partially Received'
-        };
-      }
-      return o;
-    });
+    const updatedPaid = paymentModal.paid + newPayment;
+    const updatedDue = paymentModal.amount - updatedPaid;
 
-    setOrders(updatedOrders);
-    setPaymentModal(null);
-    setNewPayment('');
+    const { error } = await supabase.from('orders').update({
+      paid: updatedPaid,
+      due: updatedDue,
+      status: updatedDue <= 0 ? 'Completed' : 'Partially Received'
+    }).eq('id', paymentModal.id);
+
+    if (error) {
+      setError('Failed to update payment');
+      console.error(error);
+    } else {
+      fetchData();
+      setPaymentModal(null);
+      setNewPayment('');
+    }
   };
 
   const filteredOrders = orders.filter(order => 
     order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     order.supplier.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -254,7 +274,127 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 space-y-6 max-h-[70vh] overflow-y-auto">
+            <div className="p-6 bg-slate-50/50 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto">
+              {/* PO Details */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h4 className="text-base font-semibold text-slate-800 mb-4">PO Details</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">PO Number</label>
+                    <input type="text" value={formData.id} readOnly className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-100 text-slate-500 font-medium focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Supplier Name</label>
+                    <input type="text" value={formData.supplier} onChange={handleSupplierChange} className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Global Textiles Ltd." />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
+                    <input type="text" value={formData.date} readOnly className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-100 text-slate-500 font-medium focus:outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Order Items */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h4 className="text-base font-semibold text-slate-800 mb-4">Order Items</h4>
+                <div className="relative mb-4">
+                  <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Search products by name or SKU to add..." 
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    className="w-full pl-11 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  {searchResults.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {searchResults.map(product => (
+                        <div 
+                          key={product.id} 
+                          onClick={() => addProductToPO(product)}
+                          className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 flex justify-between items-center"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{product.name}</p>
+                            <p className="text-xs text-slate-500">SKU: {product.sku}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-medium text-slate-700">Stock: {product.stock}</p>
+                            <p className="text-xs text-slate-500">Buy: ৳{product.purchasePrice}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Items Table */}
+                <div className="-mx-6">
+                  <table className="w-full">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Product</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Qty</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-36">Purchase Price</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-36">Selling Price</th>
+                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-36">Subtotal</th>
+                        <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-16">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {formData.items.map((item, idx) => (
+                        <tr key={item.sku}>
+                          <td className="px-6 py-4">
+                            <p className="font-medium text-slate-800 text-sm">{item.name}</p>
+                            <p className="text-xs text-slate-500">SKU: {item.sku}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <input type="number" value={item.qty} onChange={e => updatePOItem(idx, 'qty', Number(e.target.value))} className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="0" min="1" />
+                          </td>
+                          <td className="px-6 py-4">
+                            <input type="number" value={item.purchasePrice} onChange={e => updatePOItem(idx, 'purchasePrice', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="0" />
+                          </td>
+                          <td className="px-6 py-4">
+                            <input type="number" value={item.sellingPrice} onChange={e => updatePOItem(idx, 'sellingPrice', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500" placeholder="0" />
+                          </td>
+                          <td className="px-6 py-4 font-medium text-slate-700">৳ {(item.qty * (Number(item.purchasePrice) || 0)).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right">
+                            <button onClick={() => removePOItem(idx)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors">
+                              <Trash className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {formData.items.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="text-center py-10 text-slate-500 text-sm">
+                            Search for products to add them to the purchase order.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Payment Info */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h4 className="text-base font-semibold text-slate-800 mb-4">Payment Details</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Total Amount</label>
+                    <div className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-100 text-slate-800 font-bold">৳ {Number(formData.amount).toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Paid Amount</label>
+                    <input type="number" value={formData.paid} onChange={e => setFormData({...formData, paid: e.target.value === '' ? '' : Number(e.target.value)})} className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Due Amount</label>
+                    <div className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-lg bg-rose-50 text-rose-700 font-bold">৳ {(Number(formData.amount) - Number(formData.paid)).toLocaleString()}</div>
+                  </div>
+                </div>
+              </div>
               {/* Supplier Info */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>

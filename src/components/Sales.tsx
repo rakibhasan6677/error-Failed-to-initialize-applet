@@ -1,30 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ShoppingBag, Search, Plus, Edit, Trash, X, Minus, Eye, CreditCard, Receipt, RotateCcw } from 'lucide-react';
 
-// Mock products for the POS search
-const availableProducts = [
-  { id: 1, name: 'Premium Cotton T-Shirt', sku: 'TS-001', price: 450, stock: 120 },
-  { id: 2, name: 'Denim Jeans Slim Fit', sku: 'DN-002', price: 1200, stock: 15 },
-  { id: 3, name: 'Wireless Earbuds Pro', sku: 'EL-003', price: 2500, stock: 5 },
-  { id: 4, name: 'Leather Wallet Classic', sku: 'AC-004', price: 850, stock: 45 },
-  { id: 5, name: 'Running Sneakers', sku: 'FW-005', price: 3200, stock: 8 },
-];
+import { supabase } from '../supabase';
 
 export default function Sales({ 
-  sales, 
-  setSales, 
-  products, 
-  setProducts,
   pendingPaymentUpdate, 
   setPendingPaymentUpdate 
 }: { 
-  sales: any[], 
-  setSales: any, 
-  products: any[],
-  setProducts: any,
   pendingPaymentUpdate?: string | null,
   setPendingPaymentUpdate?: (id: string | null) => void
 }) {
+  const [sales, setSales] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [barcodeQuery, setBarcodeQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -43,6 +32,27 @@ export default function Sales({
   const [enabledGateways, setEnabledGateways] = useState<string[]>(['Cash']);
 
   const productSearchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    const [salesRes, productsRes] = await Promise.all([
+      supabase.from('sales').select('*'),
+      supabase.from('products').select('*')
+    ]);
+
+    if (salesRes.error || productsRes.error) {
+      setError('Failed to fetch data');
+      console.error(salesRes.error || productsRes.error);
+    } else {
+      setSales(salesRes.data || []);
+      setProducts(productsRes.data || []);
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
     const savedSettings = localStorage.getItem('ims_settings');
@@ -145,7 +155,7 @@ export default function Sales({
     setCart(cart.filter(item => item.id !== id));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (cart.length === 0) {
       alert('Please add at least one product to the cart.');
       return;
@@ -155,21 +165,26 @@ export default function Sales({
     const finalPaid = typeof paidAmount === 'number' ? paidAmount : 0;
     
     const newSale = {
-      id: `INV-00${sales.length + 1}`,
       customer: finalCustomer,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      date: new Date().toISOString(),
       amount: totalAmount,
       paid: finalPaid,
       due: calculatedDue,
-      dueDate: calculatedDue > 0 && dueDate ? new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
+      dueDate: calculatedDue > 0 && dueDate ? new Date(dueDate).toISOString() : null,
       status: currentStatus,
       items: totalItems,
       cartItems: cart,
       paymentMethod: paymentMethod
     };
 
-    setSales([newSale, ...sales]);
-    setIsModalOpen(false);
+    const { error } = await supabase.from('sales').insert([newSale]);
+    if (error) {
+      setError('Failed to create sale');
+      console.error(error);
+    } else {
+      fetchData();
+      setIsModalOpen(false);
+    }
   };
 
   const searchResults = productSearch.trim() === '' ? [] : products.filter(p => 
@@ -177,14 +192,20 @@ export default function Sales({
     p.sku.toLowerCase().includes(productSearch.toLowerCase())
   );
 
-  const handleDelete = (id: string, e?: React.MouseEvent) => {
+  const handleDelete = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if(window.confirm('Are you sure you want to delete this sale record?')) {
-      setSales(prevSales => prevSales.filter(s => s.id !== id));
+      const { error } = await supabase.from('sales').delete().eq('id', id);
+      if (error) {
+        setError('Failed to delete sale');
+        console.error(error);
+      } else {
+        fetchData();
+      }
     }
   };
 
-  const handleUpdatePayment = () => {
+  const handleUpdatePayment = async () => {
     if (typeof newPayment !== 'number' || newPayment <= 0) {
       alert('Please enter a valid payment amount.');
       return;
@@ -195,24 +216,24 @@ export default function Sales({
       return;
     }
 
-    const updatedSales = sales.map(s => {
-      if (s.id === paymentModal.id) {
-        const updatedPaid = s.paid + newPayment;
-        const updatedDue = s.amount - updatedPaid;
-        return {
-          ...s,
-          paid: updatedPaid,
-          due: updatedDue,
-          status: updatedDue <= 0 ? 'Paid' : 'Due',
-          lastPaymentMethod: paymentMethod
-        };
-      }
-      return s;
-    });
+    const updatedPaid = paymentModal.paid + newPayment;
+    const updatedDue = paymentModal.amount - updatedPaid;
 
-    setSales(updatedSales);
-    setPaymentModal(null);
-    setNewPayment('');
+    const { error } = await supabase.from('sales').update({
+      paid: updatedPaid,
+      due: updatedDue,
+      status: updatedDue <= 0 ? 'Paid' : 'Due',
+      lastPaymentMethod: paymentMethod
+    }).eq('id', paymentModal.id);
+
+    if (error) {
+      setError('Failed to update payment');
+      console.error(error);
+    } else {
+      fetchData();
+      setPaymentModal(null);
+      setNewPayment('');
+    }
   };
 
   const handleOpenReturnModal = (sale: any) => {
@@ -235,7 +256,7 @@ export default function Sales({
     }));
   };
 
-  const processReturn = () => {
+  const processReturn = async () => {
     if (!returnModal) return;
 
     const itemsToReturn = returnItems.filter(item => item.returnQty > 0);
@@ -248,67 +269,72 @@ export default function Sales({
       return;
     }
 
-    // 1. Update Stock (Increase) - Functional update
-    setProducts((prevProducts: any[]) => prevProducts.map(p => {
-      const returnItem = itemsToReturn.find(ri => ri.id === p.id || ri.sku === p.sku);
+    // 1. Update Stock (Increase)
+    const stockUpdates = itemsToReturn.map(item => 
+      supabase.rpc('increment_stock', { product_id: item.id, quantity: item.returnQty })
+    );
+
+    const stockResults = await Promise.all(stockUpdates);
+    const stockError = stockResults.some(res => res.error);
+
+    if (stockError) {
+      setError('Failed to update stock');
+      console.error(stockResults.find(res => res.error)?.error);
+      return;
+    }
+
+    // 2. Update Sale Record
+    const sale = returnModal;
+    const newCartItems = sale.cartItems.map((item: any) => {
+      const returnItem = itemsToReturn.find(ri => ri.id === item.id);
       if (returnItem) {
-        return { ...p, stock: p.stock + returnItem.returnQty };
+        return { ...item, quantity: item.quantity - returnItem.returnQty };
       }
-      return p;
-    }));
+      return item;
+    }).filter((item: any) => item.quantity > 0);
 
-    // 2. Update Sale Record - Functional update
-    setSales((prevSales: any[]) => prevSales.map(sale => {
-      if (sale.id === returnModal.id) {
-        // Calculate new cart items
-        const newCartItems = sale.cartItems.map((item: any) => {
-          const returnItem = itemsToReturn.find(ri => ri.id === item.id);
-          if (returnItem) {
-            return { ...item, quantity: item.quantity - returnItem.returnQty };
-          }
-          return item;
-        }).filter((item: any) => item.quantity > 0);
+    const newTotalAmount = newCartItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+    const newTotalItems = newCartItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
+    
+    let newPaid = sale.paid;
+    let refundAmount = 0;
 
-        // Calculate new totals
-        const newTotalAmount = newCartItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
-        const newTotalItems = newCartItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
-        
-        // Calculate Refund / Due
-        let newPaid = sale.paid;
-        let refundAmount = 0;
+    if (sale.paid > newTotalAmount) {
+      refundAmount = sale.paid - newTotalAmount;
+      newPaid = newTotalAmount;
+    }
+    
+    const newDue = newTotalAmount - newPaid;
 
-        if (sale.paid > newTotalAmount) {
-          refundAmount = sale.paid - newTotalAmount;
-          newPaid = newTotalAmount; // Assume we refunded the excess
-        }
-        
-        const newDue = newTotalAmount - newPaid;
+    const { error: saleError } = await supabase.from('sales').update({
+      items: newTotalItems,
+      amount: newTotalAmount,
+      paid: newPaid,
+      due: newDue,
+      status: newDue <= 0 ? 'Paid' : 'Due',
+      cartItems: newCartItems,
+      returned: true
+    }).eq('id', sale.id);
 
-        if (refundAmount > 0) {
-          alert(`Return Processed!\n\nPlease Refund: ৳ ${refundAmount.toLocaleString()} to the customer.`);
-        }
-
-        return {
-          ...sale,
-          items: newTotalItems,
-          amount: newTotalAmount,
-          paid: newPaid,
-          due: newDue,
-          status: newDue <= 0 ? 'Paid' : 'Due',
-          cartItems: newCartItems,
-          returned: true
-        };
+    if (saleError) {
+      setError('Failed to update sale');
+      console.error(saleError);
+    } else {
+      if (refundAmount > 0) {
+        alert(`Return Processed!\n\nPlease Refund: ৳ ${refundAmount.toLocaleString()} to the customer.`);
       }
-      return sale;
-    }));
-
-    setReturnModal(null);
+      fetchData();
+      setReturnModal(null);
+    }
   };
 
   const filteredSales = sales.filter(sale => 
     sale.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     sale.customer.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">

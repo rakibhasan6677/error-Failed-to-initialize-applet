@@ -1,7 +1,12 @@
+import { supabase } from '../supabase';
 import React, { useState, useEffect } from 'react';
 import { Save, Bell, Shield, Key, RefreshCw } from 'lucide-react';
 
 export default function Settings() {
+  const [settings, setSettings] = useState<any>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const initialSettings = {
     storeName: "IMS Pro Retail",
     currency: "BDT",
@@ -15,7 +20,7 @@ export default function Settings() {
     maxPasswordChanges: 3
   };
 
-  const [settings, setSettings] = useState(initialSettings);
+
   const [showSuccess, setShowSuccess] = useState(false);
   const [resetCode, setResetCode] = useState('');
   const [timeLeft, setTimeLeft] = useState(60);
@@ -29,6 +34,7 @@ export default function Settings() {
   };
 
   useEffect(() => {
+    fetchSettings();
     generateCode();
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
@@ -43,34 +49,38 @@ export default function Settings() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load settings from localStorage on mount
-  useEffect(() => {
-    const savedSettings = localStorage.getItem('ims_settings');
-    if (savedSettings) {
-      try {
-        setSettings(JSON.parse(savedSettings));
-      } catch (e) {
-        console.error("Failed to parse settings", e);
-      }
+  const fetchSettings = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('settings').select('*').single();
+    if (error) {
+      setError('Failed to fetch settings');
+      console.error(error);
+      setSettings(initialSettings);
+    } else {
+      setSettings(data || initialSettings);
     }
-  }, []);
+    setLoading(false);
+  };
 
-  const handleSave = () => {
-    localStorage.setItem('ims_settings', JSON.stringify(settings));
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
+  const handleSave = async () => {
+    const { error } = await supabase.from('settings').update(settings).eq('id', settings.id);
+    if (error) {
+      setError('Failed to save settings');
+      console.error(error);
+    } else {
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    }
   };
 
   const handleCancel = () => {
     if (confirm('আপনি কি নিশ্চিত যে আপনি পরিবর্তনগুলো বাতিল করতে চান?')) {
-      const savedSettings = localStorage.getItem('ims_settings');
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
-      } else {
-        setSettings(initialSettings);
-      }
+      fetchSettings();
     }
   };
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
