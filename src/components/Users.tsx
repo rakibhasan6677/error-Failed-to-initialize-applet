@@ -22,7 +22,15 @@ interface User {
 export default function Users() {
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('ims_users');
-    return saved ? JSON.parse(saved) : initialUsers;
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse users from localStorage", e);
+        return initialUsers;
+      }
+    }
+    return initialUsers;
   });
 
   useEffect(() => {
@@ -47,9 +55,9 @@ export default function Users() {
 
   const handleSave = () => {
     if (editingUser) {
-      setUsers(users.map(u => u.id === editingUser.id ? { ...formData, id: u.id } : u));
+      setUsers(prevUsers => prevUsers.map(u => u.id === editingUser.id ? { ...formData, id: u.id } : u));
     } else {
-      setUsers([...users, { ...formData, id: Date.now() }]);
+      setUsers(prevUsers => [...prevUsers, { ...formData, id: Date.now() }]);
     }
     setIsModalOpen(false);
   };
@@ -57,7 +65,7 @@ export default function Users() {
   const handleDelete = (id: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if(window.confirm('Are you sure you want to delete this user?')) {
-      setUsers(users.filter(u => u.id !== id));
+      setUsers(prevUsers => prevUsers.filter(u => u.id !== id));
     }
   };
 

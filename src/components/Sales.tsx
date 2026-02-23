@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ShoppingBag, Search, Plus, Edit, Trash, X, Minus, Eye, CreditCard, Receipt } from 'lucide-react';
+import { ShoppingBag, Search, Plus, Edit, Trash, X, Minus, Eye, CreditCard, Receipt, RotateCcw } from 'lucide-react';
 
 // Mock products for the POS search
 const availableProducts = [
@@ -14,12 +14,14 @@ export default function Sales({
   sales, 
   setSales, 
   products, 
+  setProducts,
   pendingPaymentUpdate, 
   setPendingPaymentUpdate 
 }: { 
   sales: any[], 
-  setSales: (sales: any[]) => void, 
+  setSales: any, 
   products: any[],
+  setProducts: any,
   pendingPaymentUpdate?: string | null,
   setPendingPaymentUpdate?: (id: string | null) => void
 }) {
@@ -34,6 +36,8 @@ export default function Sales({
   
   const [viewInvoice, setViewInvoice] = useState<any>(null);
   const [paymentModal, setPaymentModal] = useState<any>(null);
+  const [returnModal, setReturnModal] = useState<any>(null);
+  const [returnItems, setReturnItems] = useState<any[]>([]);
   const [newPayment, setNewPayment] = useState<number | ''>('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [enabledGateways, setEnabledGateways] = useState<string[]>(['Cash']);
@@ -176,7 +180,7 @@ export default function Sales({
   const handleDelete = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if(window.confirm('Are you sure you want to delete this sale record?')) {
-      setSales(sales.filter(s => s.id !== id));
+      setSales(prevSales => prevSales.filter(s => s.id !== id));
     }
   };
 
@@ -209,6 +213,96 @@ export default function Sales({
     setSales(updatedSales);
     setPaymentModal(null);
     setNewPayment('');
+  };
+
+  const handleOpenReturnModal = (sale: any) => {
+    setReturnModal(sale);
+    // Initialize return items with 0 quantity
+    setReturnItems(sale.cartItems.map((item: any) => ({
+      ...item,
+      returnQty: 0
+    })));
+  };
+
+  const handleReturnQtyChange = (index: number, qty: number) => {
+    setReturnItems(prevItems => prevItems.map((item, i) => {
+      if (i === index) {
+        if (qty >= 0 && qty <= item.quantity) {
+          return { ...item, returnQty: qty };
+        }
+      }
+      return item;
+    }));
+  };
+
+  const processReturn = () => {
+    if (!returnModal) return;
+
+    const itemsToReturn = returnItems.filter(item => item.returnQty > 0);
+    if (itemsToReturn.length === 0) {
+      alert("Please select at least one item to return.");
+      return;
+    }
+
+    if (!window.confirm("Are you sure you want to process this return? Stock will be updated and refund amount calculated.")) {
+      return;
+    }
+
+    // 1. Update Stock (Increase) - Functional update
+    setProducts((prevProducts: any[]) => prevProducts.map(p => {
+      const returnItem = itemsToReturn.find(ri => ri.id === p.id || ri.sku === p.sku);
+      if (returnItem) {
+        return { ...p, stock: p.stock + returnItem.returnQty };
+      }
+      return p;
+    }));
+
+    // 2. Update Sale Record - Functional update
+    setSales((prevSales: any[]) => prevSales.map(sale => {
+      if (sale.id === returnModal.id) {
+        // Calculate new cart items
+        const newCartItems = sale.cartItems.map((item: any) => {
+          const returnItem = itemsToReturn.find(ri => ri.id === item.id);
+          if (returnItem) {
+            return { ...item, quantity: item.quantity - returnItem.returnQty };
+          }
+          return item;
+        }).filter((item: any) => item.quantity > 0);
+
+        // Calculate new totals
+        const newTotalAmount = newCartItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+        const newTotalItems = newCartItems.reduce((sum: number, item: any) => sum + item.quantity, 0);
+        
+        // Calculate Refund / Due
+        let newPaid = sale.paid;
+        let refundAmount = 0;
+
+        if (sale.paid > newTotalAmount) {
+          refundAmount = sale.paid - newTotalAmount;
+          newPaid = newTotalAmount; // Assume we refunded the excess
+        }
+        
+        const newDue = newTotalAmount - newPaid;
+
+        if (refundAmount > 0) {
+          alert(`Return Processed!\n\nPlease Refund: ৳ ${refundAmount.toLocaleString()} to the customer.`);
+        }
+
+        return {
+          ...sale,
+          items: newTotalItems,
+          amount: newTotalAmount,
+          paid: newPaid,
+          due: newDue,
+          status: newDue <= 0 ? 'Paid' : 'Due',
+          cartItems: newCartItems,
+          returned: true
+        };
+      }
+      return sale;
+    }));
+
+    setReturnModal(null);
   };
 
   const filteredSales = sales.filter(sale => 
@@ -292,6 +386,7 @@ export default function Sales({
                     <button onClick={() => { setPaymentModal(sale); setNewPayment(''); setPaymentMethod('Cash'); }} className="p-1 text-slate-400 hover:text-emerald-600 transition-colors" title="Update Payment"><CreditCard className="w-4 h-4" /></button>
                   )}
                   <button onClick={(e) => handleDelete(sale.id, e)} className="p-1 text-slate-400 hover:text-rose-600 transition-colors" title="Delete"><Trash className="w-4 h-4" /></button>
+                  <button onClick={() => handleOpenReturnModal(sale)} className="p-1 text-slate-400 hover:text-orange-600 transition-colors" title="Return Items"><RotateCcw className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
@@ -533,6 +628,92 @@ export default function Sales({
             <div className="p-4 border-t border-slate-100 flex justify-end">
               <button onClick={() => setViewInvoice(null)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors">
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return Modal */}
+      {returnModal && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
+              <div className="flex items-center gap-2 text-orange-600">
+                <RotateCcw className="w-5 h-5" />
+                <h3 className="text-lg font-semibold text-slate-900">Return Items - {returnModal.id}</h3>
+              </div>
+              <button onClick={() => setReturnModal(null)} className="text-slate-400 hover:text-slate-500">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              <p className="text-sm text-slate-500 mb-4">Select items and quantities to return to stock.</p>
+              
+              <div className="space-y-3">
+                {returnItems.map((item, idx) => (
+                  <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                        <p className="text-xs text-slate-500">Sold Price: ৳ {item.price}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-medium text-slate-700">Sold Qty: {item.quantity}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between bg-slate-50 p-2 rounded">
+                      <span className="text-sm text-slate-600">Return Qty:</span>
+                      <div className="flex items-center border border-slate-200 rounded bg-white">
+                        <button 
+                          onClick={() => handleReturnQtyChange(idx, item.returnQty - 1)}
+                          className="px-2 py-1 text-slate-600 hover:bg-slate-100 border-r border-slate-200"
+                          disabled={item.returnQty <= 0}
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <input 
+                          type="number" 
+                          value={item.returnQty}
+                          onChange={(e) => handleReturnQtyChange(idx, parseInt(e.target.value) || 0)}
+                          className="w-12 text-center text-sm focus:outline-none"
+                          min="0"
+                          max={item.quantity}
+                        />
+                        <button 
+                          onClick={() => handleReturnQtyChange(idx, item.returnQty + 1)}
+                          className="px-2 py-1 text-slate-600 hover:bg-slate-100 border-l border-slate-200"
+                          disabled={item.returnQty >= item.quantity}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 bg-orange-50 p-4 rounded-lg border border-orange-100">
+                <div className="flex justify-between items-center text-sm font-medium text-orange-800">
+                  <span>Refund Amount:</span>
+                  <span>৳ {returnItems.reduce((sum, item) => sum + (item.returnQty * item.price), 0).toLocaleString()}</span>
+                </div>
+                <p className="text-xs text-orange-600 mt-1">
+                  * This amount will be deducted from the invoice total.
+                </p>
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
+              <button onClick={() => setReturnModal(null)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button 
+                onClick={processReturn}
+                className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Confirm Return
               </button>
             </div>
           </div>

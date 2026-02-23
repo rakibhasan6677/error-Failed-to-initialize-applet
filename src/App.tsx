@@ -227,7 +227,7 @@ export default function App() {
   const handleDeleteProduct = (id: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if(window.confirm('Are you sure you want to delete this product?')) {
-      setProducts(products.filter(p => p.id !== id));
+      setProducts(prevProducts => prevProducts.filter(p => p.id !== id));
     }
   };
 
@@ -702,7 +702,8 @@ export default function App() {
               <Sales 
                 sales={sales} 
                 setSales={setSales} 
-                products={products} 
+                products={products}
+                setProducts={setProducts}
                 pendingPaymentUpdate={pendingPaymentUpdate}
                 setPendingPaymentUpdate={setPendingPaymentUpdate}
               />

@@ -134,7 +134,7 @@ export default function Orders({ orders, setOrders, products, setProducts }: { o
   const handleDelete = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if(window.confirm('Are you sure you want to delete this order?')) {
-      setOrders(orders.filter(o => o.id !== id));
+      setOrders(prevOrders => prevOrders.filter(o => o.id !== id));
     }
   };
 
